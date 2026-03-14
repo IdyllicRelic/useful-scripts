@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+name="app"
+lang="cpp"
+
+if ! name=$(
+	whiptail \
+		--inputbox "Enter project name:" 10 50 "$name" \
+		3>&1 1>&2 2>&3
+); then
+	printf "User Cancelled\n"
+	exit 1
+fi
+
+if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+	printf "Invalid project name\n"
+	exit 1
+fi
+
+if ! lang=$(
+	whiptail \
+		--menu "Choose your language" 15 50 2 \
+		c "C" \
+		cpp "C++" \
+		3>&1 1>&2 2>&3
+); then
+	printf "User Cancelled\n"
+	exit 1
+fi
+
+clear
+
+case "$lang" in
+c)
+	std="c_std=c23"
+	;;
+cpp)
+	std="cpp_std=c++23"
+	;;
+esac
+
+cat <<EOF >meson.build
+project('$name', '$lang',
+  version: '1.0',
+  default_options: [
+    '$std',
+    'warning_level=3',
+    'werror=true'
+  ]
+)
+
+common_flags = [
+  '-Wextra',
+  '-pedantic-errors'
+]
+
+debug_flags = [
+  '-ggdb'
+]
+
+release_flags = [
+  '-O2',
+  '-DNDEBUG'
+]
+
+add_project_arguments(common_flags, language: '$lang')
+
+if get_option('buildtype') == 'debug'
+  add_project_arguments(debug_flags, language: '$lang')
+else
+  add_project_arguments(release_flags, language: '$lang')
+endif
+
+inc = include_directories('include')
+
+src = files(
+  'src/main.$lang'
+)
+executable('$name',
+  sources: src,
+  include_directories: inc,
+  install: true
+)
+EOF
+
+cat <<EOF >dev
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+action="\$1"
+shift
+
+case "\$action" in
+setup)
+	buildtype="\${1:-debug}"
+	compiler="\${2:-clang}"
+
+	rm -rf build
+
+	if [[ "\$compiler" == 'gcc' ]]; then
+		CC=gcc
+		CXX=g++
+	else
+		CC=clang
+		CXX=clang++
+	fi
+
+	if [[ "\$buildtype" == 'release' ]]; then
+		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=release
+	else
+		CC="\$CC" CXX="\$CXX" meson setup build
+	fi
+	;;
+build)
+	meson compile -C build
+	;;
+run)
+	meson compile -C build
+	./build/"$name"
+	;;
+*)
+	printf "Usage \$0 {setup|build|run}\n"
+	exit 1
+	;;
+esac
+EOF
+
+chmod +x dev
+
+mkdir ./src ./include
+touch ./src/main."$lang"
