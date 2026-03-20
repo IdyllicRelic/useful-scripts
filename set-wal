@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+[[ -z "${1-}" ]] && {
+	echo "Usage: $0 /path/to/image"
+	exit 1
+}
+
+imagepath="$1"
+[[ -f "$imagepath" ]] || {
+	printf "Error: File not found: %s\n" "$imagepath" >&2
+	exit 1
+}
+
+gradience() { flatpak run --command=gradience-cli com.github.hydroxycarbamide.Gradience "$@"; }
+
+if ! command -v git >/dev/null; then
+	printf "Error: Git is not installed.\n"
+	exit 1
+fi
+
+if ! command -v python3 >/dev/null; then
+	printf "Error: Python is not installed.\n"
+	exit 1
+fi
+
+if ! command -v matugen >/dev/null; then
+	printf "Error: Matugen is not installed.\n" >&2
+	exit 1
+fi
+
+if ! flatpak info com.github.hydroxycarbamide.Gradience &>/dev/null; then
+	printf "Error: Gradience is not installed.\n" >&2
+	exit 1
+fi
+
+if ! command -v jq >/dev/null; then
+	printf "Error: jq is not installed.\n" >&2
+	exit 1
+fi
+
+flatpak override --user --filesystem="xdg-config/gtk-3.0"
+flatpak override --user --filesystem="xdg-config/gtk-4.0"
+
+gradience access-file --allow "$imagepath" >/dev/null
+
+gradience monet -n gradience -p "$imagepath" --theme dark >/dev/null
+
+gradience apply -n gradience --gtk both >/dev/null
+printf "GTK3 and GTK4 theme applied.\n"
+
+gsettings set org.gnome.desktop.background picture-uri-dark "file://$imagepath"
+
+accent_color="$(gradience monet -n gradience -p "$imagepath" --theme dark -j | jq -r '.variables.accent_color')"
+
+if ! [[ -d /tmp/marble ]]; then
+	git clone --depth 1 https://github.com/imarkoff/Marble-shell-theme.git /tmp/marble
+fi
+
+git -C /tmp/marble pull >/dev/null
+
+hex="${accent_color#'#'}"
+
+read H S < <(awk -v r=$((16#${hex:0:2})) -v g=$((16#${hex:2:2})) -v b=$((16#${hex:4:2})) 'BEGIN{
+  r/=255;g/=255;b/=255
+  mx=(r>g?r:g);if(b>mx)mx=b
+  mn=(r<g?r:g);if(b<mn)mn=b
+  d=mx-mn
+  s=(d==0)?0:d/(1-(2*((mx+mn)/2)>1?2*((mx+mn)/2)-1:1-2*((mx+mn)/2)))
+  h=(d==0)?0:(mx==r)?60*(((g-b)/d)%6):(mx==g)?60*((b-r)/d+2):60*((r-g)/d+4)
+  if(h<0)h+=360
+  printf "%d %d\n",h,s*100
+}')
+
+python3 /tmp/marble/install.py --hue "$H" --sat "$S" --filled --mode dark >/dev/null
+
+matugen_config="$HOME/.config/matugen"
+mkdir -p "$matugen_config/templates"
+
+cat <<'EOF' >"$matugen_config/templates/ptyxis.palette"
+[Palette]
+Name=Matugen
+Background={{ colors.background.default.hex }}
+Foreground={{ colors.on_background.default.hex }}
+Cursor={{ colors.primary.default.hex }}
+Color0={{ colors.background.default.hex }}
+Color1={{ base16.base08.default.hex }}
+Color2={{ base16.base0b.default.hex }}
+Color3={{ base16.base0a.default.hex }}
+Color4={{ base16.base0d.default.hex }}
+Color5={{ base16.base0e.default.hex }}
+Color6={{ base16.base0c.default.hex }}
+Color7={{ colors.on_background.default.hex }}
+Color8={{ colors.background.default.hex | lighten: 20.0 }}
+Color9={{ base16.base08.default.hex | lighten: 20.0 }}
+Color10={{ base16.base0b.default.hex | lighten: 20.0 }}
+Color11={{ base16.base0a.default.hex | lighten: 20.0 }}
+Color12={{ base16.base0d.default.hex | lighten: 20.0 }}
+Color13={{ base16.base0e.default.hex | lighten: 20.0 }}
+Color14={{ base16.base0c.default.hex | lighten: 20.0 }}
+Color15={{ colors.on_background.default.hex | lighten: 20.0 }}
+EOF
+
+if ! [[ -f $matugen_config/templates/starship-colors.toml ]]; then
+	curl -fsSL "https://raw.githubusercontent.com/InioX/matugen-themes/refs/heads/main/templates/starship-colors.toml" \
+		-o "$matugen_config/templates/starship-colors.toml" || {
+		printf "Error: Failed to download starship template.\n"
+		exit 1
+	}
+fi
+
+if ! [[ -f $matugen_config/config.toml ]]; then
+	cat <<'EOF' >"$matugen_config/config.toml"
+[config]
+
+[templates.ptyxis]
+input_path="./templates/ptyxis.palette"
+output_path="~/.var/app/app.devsuite.Ptyxis/data/app.devsuite.Ptyxis/palettes/matugen.palette"
+
+[templates.starship]
+input_path="./templates/starship-colors.toml"
+output_path="~/.config/starship.toml"
+EOF
+fi
+
+matugen color hex "$accent_color" -m dark >/dev/null
+printf "Starship and ptyxis colors created.\n"
+printf "Select the 'matugen' preset in ptyxis.\n"
