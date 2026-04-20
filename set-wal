@@ -2,14 +2,8 @@
 
 set -euo pipefail
 
-[[ -z "${1-}" ]] && {
-	echo "Usage: $0 /path/to/image"
-	exit 1
-}
-
-imagepath="$1"
-[[ -f "$imagepath" ]] || {
-	printf "Error: File not found: %s\n" "$imagepath" >&2
+usage() {
+	printf "Usage: $0 [-i <image> ] [-v <video> ]"
 	exit 1
 }
 
@@ -40,19 +34,58 @@ if ! command -v jq >/dev/null; then
 	exit 1
 fi
 
+verifyPath() {
+	local file="$1"
+	[[ -f "$file" ]] || {
+		printf "Error: File not found: %s\n" "$file" >&2
+		exit 1
+	}
+}
+
 flatpak override --user --filesystem="xdg-config/gtk-3.0"
 flatpak override --user --filesystem="xdg-config/gtk-4.0"
 
-gradience access-file --allow "$imagepath" >/dev/null
+while getopts "i:v:" flag; do
+	case $flag in
+	i)
+		FILEPATH="$OPTARG"
+		is_video=false
+		verifyPath "$FILEPATH"
+		;;
+	v)
+		if ! command -v ffmpeg >/dev/null; then
+			printf "Error: ffmpeg is not installed.\n" >&2
+			exit 1
+		fi
 
-gradience monet -n gradience -p "$imagepath" --theme dark >/dev/null
+		VIDEO="$OPTARG"
+		is_video=true
+		FRAME=$(mktemp /tmp/frame_XXX.png)
+		ffmpeg -ss 2 -i "$VIDEO" -frames:v 1 "$FRAME" 2>/dev/null
+		FILEPATH="$FRAME"
+		;;
+	*)
+		usage
+		;;
+	esac
+done
+
+if [[ $OPTIND -eq 1 ]]; then
+	usage
+fi
+
+gradience access-file --allow "$FILEPATH" >/dev/null
+
+gradience monet -n gradience -p "$FILEPATH" --theme dark >/dev/null
 
 gradience apply -n gradience --gtk both >/dev/null
 printf "GTK3 and GTK4 theme applied.\n"
 
-gsettings set org.gnome.desktop.background picture-uri-dark "file://$imagepath"
+if ! $is_video; then
+	gsettings set org.gnome.desktop.background picture-uri-dark "file://$FILEPATH"
+fi
 
-accent_color="$(gradience monet -n gradience -p "$imagepath" --theme dark -j | jq -r '.variables.accent_color')"
+accent_color="$(gradience monet -n gradience -p "$FILEPATH" --theme dark -j | jq -r '.variables.accent_color')"
 
 if ! [[ -d /tmp/marble ]]; then
 	git clone --depth 1 https://github.com/imarkoff/Marble-shell-theme.git /tmp/marble
