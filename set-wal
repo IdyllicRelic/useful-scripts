@@ -3,7 +3,16 @@
 set -euo pipefail
 
 usage() {
-	printf "Usage: $0 [-i <image> ] [-v <video> ]"
+	cat <<EOF
+Usage: $(basename $0) <command> [options]
+
+Commands:
+	setup        Setup the system for themeing
+	run          Set the theme
+	  -i <path>  Image mode
+	  -v <path>  Video mode
+EOF
+
 	exit 1
 }
 
@@ -42,37 +51,103 @@ verifyPath() {
 	}
 }
 
-flatpak override --user --filesystem="xdg-config/gtk-3.0"
-flatpak override --user --filesystem="xdg-config/gtk-4.0"
+COMMAND="${1:-help}"
+shift 2>/dev/null
 
-while getopts "i:v:" flag; do
-	case $flag in
-	i)
-		FILEPATH="$OPTARG"
-		is_video=false
-		verifyPath "$FILEPATH"
-		;;
-	v)
-		if ! command -v ffmpeg >/dev/null; then
-			printf "Error: ffmpeg is not installed.\n" >&2
+case "$COMMAND" in
+setup)
+	flatpak override --user --filesystem="xdg-config/gtk-3.0"
+	flatpak override --user --filesystem="xdg-config/gtk-4.0"
+
+	matugen_config="$HOME/.config/matugen"
+	mkdir -p "$matugen_config/templates"
+
+	cat <<-'EOF' >"$matugen_config/templates/ptyxis.palette"
+		[Palette]
+		Name=Matugen
+		Background={{ colors.background.default.hex }}
+		Foreground={{ colors.on_background.default.hex }}
+		Cursor={{ colors.primary.default.hex }}
+		Color0={{ colors.background.default.hex }}
+		Color1={{ base16.base08.default.hex }}
+		Color2={{ base16.base0b.default.hex }}
+		Color3={{ base16.base0a.default.hex }}
+		Color4={{ base16.base0d.default.hex }}
+		Color5={{ base16.base0e.default.hex }}
+		Color6={{ base16.base0c.default.hex }}
+		Color7={{ colors.on_background.default.hex }}
+		Color8={{ colors.background.default.hex | lighten: 20.0 }}
+		Color9={{ base16.base08.default.hex | lighten: 20.0 }}
+		Color10={{ base16.base0b.default.hex | lighten: 20.0 }}
+		Color11={{ base16.base0a.default.hex | lighten: 20.0 }}
+		Color12={{ base16.base0d.default.hex | lighten: 20.0 }}
+		Color13={{ base16.base0e.default.hex | lighten: 20.0 }}
+		Color14={{ base16.base0c.default.hex | lighten: 20.0 }}
+		Color15={{ colors.on_background.default.hex | lighten: 20.0 }}
+	EOF
+
+	if ! [[ -f $matugen_config/templates/starship-colors.toml ]]; then
+		curl -fsSL "https://raw.githubusercontent.com/InioX/matugen-themes/refs/heads/main/templates/starship-colors.toml" \
+			-o "$matugen_config/templates/starship-colors.toml" || {
+			printf "Error: Failed to download starship template.\n"
 			exit 1
-		fi
+		}
+	fi
 
-		VIDEO="$OPTARG"
-		is_video=true
-		FRAME=$(mktemp /tmp/frame_XXX.png)
-		ffmpeg -ss 2 -i "$VIDEO" -frames:v 1 "$FRAME" 2>/dev/null
-		FILEPATH="$FRAME"
-		;;
-	*)
+	if ! [[ -f $matugen_config/config.toml ]]; then
+		cat <<-'EOF' >"$matugen_config/config.toml"
+			[config]
+
+			[templates.ptyxis]
+			input_path="./templates/ptyxis.palette"
+			output_path="~/.var/app/app.devsuite.Ptyxis/data/app.devsuite.Ptyxis/palettes/matugen.palette"
+
+			[templates.starship]
+			input_path="./templates/starship-colors.toml"
+			output_path="~/.config/starship.toml"
+		EOF
+	fi
+
+	printf "Finished setup."
+	exit 0
+	;;
+run)
+	while getopts "i:v:" flag; do
+		case $flag in
+		i)
+			FILEPATH="$OPTARG"
+			is_video=false
+			verifyPath "$FILEPATH"
+			;;
+		v)
+			if ! command -v ffmpeg >/dev/null; then
+				printf "Error: ffmpeg is not installed.\n" >&2
+				exit 1
+			fi
+
+			VIDEO="$OPTARG"
+			is_video=true
+			FRAME=$(mktemp /tmp/frame_XXX.png)
+			ffmpeg -ss 2 -i "$VIDEO" -frames:v 1 "$FRAME"
+			FILEPATH="$FRAME"
+			;;
+		*)
+			usage
+			;;
+		esac
+	done
+
+	if [[ $OPTIND -eq 1 ]]; then
 		usage
-		;;
-	esac
-done
-
-if [[ $OPTIND -eq 1 ]]; then
+	fi
+	;;
+help | --help | -h)
 	usage
-fi
+	;;
+*)
+	usage
+	;;
+esac
 
 gradience access-file --allow "$FILEPATH" >/dev/null
 
@@ -107,55 +182,6 @@ read H S < <(awk -v r=$((16#${hex:0:2})) -v g=$((16#${hex:2:2})) -v b=$((16#${he
 }')
 
 python3 /tmp/marble/install.py --hue "$H" --sat "$S" --filled --mode dark >/dev/null
-
-matugen_config="$HOME/.config/matugen"
-mkdir -p "$matugen_config/templates"
-
-cat <<'EOF' >"$matugen_config/templates/ptyxis.palette"
-[Palette]
-Name=Matugen
-Background={{ colors.background.default.hex }}
-Foreground={{ colors.on_background.default.hex }}
-Cursor={{ colors.primary.default.hex }}
-Color0={{ colors.background.default.hex }}
-Color1={{ base16.base08.default.hex }}
-Color2={{ base16.base0b.default.hex }}
-Color3={{ base16.base0a.default.hex }}
-Color4={{ base16.base0d.default.hex }}
-Color5={{ base16.base0e.default.hex }}
-Color6={{ base16.base0c.default.hex }}
-Color7={{ colors.on_background.default.hex }}
-Color8={{ colors.background.default.hex | lighten: 20.0 }}
-Color9={{ base16.base08.default.hex | lighten: 20.0 }}
-Color10={{ base16.base0b.default.hex | lighten: 20.0 }}
-Color11={{ base16.base0a.default.hex | lighten: 20.0 }}
-Color12={{ base16.base0d.default.hex | lighten: 20.0 }}
-Color13={{ base16.base0e.default.hex | lighten: 20.0 }}
-Color14={{ base16.base0c.default.hex | lighten: 20.0 }}
-Color15={{ colors.on_background.default.hex | lighten: 20.0 }}
-EOF
-
-if ! [[ -f $matugen_config/templates/starship-colors.toml ]]; then
-	curl -fsSL "https://raw.githubusercontent.com/InioX/matugen-themes/refs/heads/main/templates/starship-colors.toml" \
-		-o "$matugen_config/templates/starship-colors.toml" || {
-		printf "Error: Failed to download starship template.\n"
-		exit 1
-	}
-fi
-
-if ! [[ -f $matugen_config/config.toml ]]; then
-	cat <<'EOF' >"$matugen_config/config.toml"
-[config]
-
-[templates.ptyxis]
-input_path="./templates/ptyxis.palette"
-output_path="~/.var/app/app.devsuite.Ptyxis/data/app.devsuite.Ptyxis/palettes/matugen.palette"
-
-[templates.starship]
-input_path="./templates/starship-colors.toml"
-output_path="~/.config/starship.toml"
-EOF
-fi
 
 matugen color hex "$accent_color" -m dark >/dev/null
 printf "Starship and ptyxis colors created.\n"
