@@ -130,5 +130,18 @@ EOF
 
 chmod +x dev
 
+cat <<EOF >.clangd
+CompileFlags:
+	CompilationDatabase: build
+EOF
+
+if [[ -f "pixi.toml" ]]; then
+	sed -i '/\[tasks\]/a\
+setup = { cmd = "./dev setup", inputs = ["meson.build"] }\
+build = { cmd = "./dev build", depends-on = ["setup"] }\
+run   = { cmd = "./dev run", depends-on = ["build"] }\
+clean = "rm -rf ./build"' "pixi.toml"
+fi
+
 mkdir ./src ./include
 touch ./src/main."$lang"
