@@ -96,7 +96,7 @@ shift
 case "\$action" in
 setup)
 	buildtype="\${1:-debug}"
-	compiler="\${2:-clang}"
+	compiler="\${2:-gcc}"
 
 	rm -rf build
 
@@ -118,7 +118,6 @@ build)
 	meson compile -C build
 	;;
 run)
-	meson compile -C build
 	./build/"$name"
 	;;
 *)
