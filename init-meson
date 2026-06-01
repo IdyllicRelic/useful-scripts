@@ -5,6 +5,11 @@ set -euo pipefail
 name="app"
 lang="cpp"
 
+if ! command -v whiptail; then
+	prinf "Whiptail is not installed.\n"
+	exit 1
+fi
+
 if ! name=$(
 	whiptail \
 		--inputbox "Enter project name:" 10 50 "$name" \
@@ -50,28 +55,6 @@ project('$name', '$lang',
     'werror=true'
   ]
 )
-
-common_flags = [
-  '-Wextra',
-  '-pedantic-errors'
-]
-
-debug_flags = [
-  '-ggdb'
-]
-
-release_flags = [
-  '-O2',
-  '-DNDEBUG'
-]
-
-add_project_arguments(common_flags, language: '$lang')
-
-if get_option('buildtype') == 'debug'
-  add_project_arguments(debug_flags, language: '$lang')
-else
-  add_project_arguments(release_flags, language: '$lang')
-endif
 
 inc = include_directories('include')
 
