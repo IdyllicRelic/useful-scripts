@@ -93,8 +93,13 @@ setup)
 
 	if [[ "\$buildtype" == 'release' ]]; then
 		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=release
+	elif [[ "\$buildtype" == 'buildoptimized' ]]; then
+		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=buildoptimized
+	elif [[ "\$buildtype" == 'debug' ]]; then
+		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=debug
 	else
-		CC="\$CC" CXX="\$CXX" meson setup build
+		printf "Unsupported build type \$buildtype"
+		exit 1
 	fi
 	;;
 build)
