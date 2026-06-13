@@ -68,54 +68,20 @@ executable('$name',
 )
 EOF
 
-cat <<EOF >dev
-#!/usr/bin/env bash
+cat <<EOF >justfile
+run: build
+	./build/$name
 
-set -euo pipefail
-
-action="\$1"
-shift
-
-case "\$action" in
-setup)
-	buildtype="\${1:-debug}"
-	compiler="\${2:-clang}"
-
-	rm -rf build
-
-	if [[ "\$compiler" == 'gcc' ]]; then
-		CC=gcc
-		CXX=g++
-	else
-		CC=clang
-		CXX=clang++
-	fi
-
-	if [[ "\$buildtype" == 'release' ]]; then
-		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=release
-	elif [[ "\$buildtype" == 'buildoptimized' ]]; then
-		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=buildoptimized
-	elif [[ "\$buildtype" == 'debug' ]]; then
-		CC="\$CC" CXX="\$CXX" meson setup build --buildtype=debug
-	else
-		printf "Unsupported build type \$buildtype"
-		exit 1
-	fi
-	;;
-build)
+build:
 	meson compile -C build
-	;;
-run)
-	./build/"$name"
-	;;
-*)
-	printf "Usage \$0 {setup|build|run}\n"
-	exit 1
-	;;
-esac
-EOF
 
-chmod +x dev
+setup buildtype="debug" compiler="clang":
+	if [ "{{compiler}}" = "gcc" ]; then \\
+		CC=gcc CXX=g++ meson setup build --buildtype={{buildtype}}; \\
+	else \\
+		CC=clang CXX=clang++ meson setup build --buildtype={{buildtype}}; \\
+	fi 
+EOF
 
 mkdir ./src ./include
 touch ./src/main."$lang"
