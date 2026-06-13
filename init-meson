@@ -5,37 +5,19 @@ set -euo pipefail
 name="app"
 lang="cpp"
 
-if ! command -v whiptail; then
-	prinf "Whiptail is not installed.\n"
-	exit 1
-fi
-
-if ! name=$(
-	whiptail \
-		--inputbox "Enter project name:" 10 50 "$name" \
-		3>&1 1>&2 2>&3
-); then
-	printf "User Cancelled\n"
-	exit 1
-fi
+read -p "Enter project name: " name
 
 if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
 	printf "Invalid project name\n"
 	exit 1
 fi
 
-if ! lang=$(
-	whiptail \
-		--menu "Choose your language" 15 50 2 \
-		c "C" \
-		cpp "C++" \
-		3>&1 1>&2 2>&3
-); then
-	printf "User Cancelled\n"
-	exit 1
-fi
-
-clear
+declare -A choices=(
+	["C"]='c'
+	["C++"]='cpp'
+)
+label=$(printf "%s\n" "${!choices[@]}" | fzf --prompt="Choose your language")
+lang="${choices[$label]}"
 
 case "$lang" in
 c)
